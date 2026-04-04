@@ -36,6 +36,47 @@ def set_seed(seed=42):
     torch.manual_seed(seed)
 
 
+def load_reservoir_training_sequences(current_dir, features, window_size):
+    training_sources = []
+
+    base_df = pd.read_excel(os.path.join(current_dir, '6-3训练数据_DT.xlsx'))
+    training_sources.append(('原始训练井段', base_df))
+
+    extra_file = os.path.join(current_dir, '扩充数据.xlsx')
+    if os.path.exists(extra_file):
+        for sheet_name in ['扩充数据1', '扩充数据2']:
+            extra_df = pd.read_excel(extra_file, sheet_name=sheet_name)
+            if 'Unnamed: 4' in extra_df.columns:
+                extra_df = extra_df.drop(columns=['Unnamed: 4'])
+            training_sources.append((sheet_name, extra_df))
+
+    X_train_seq_list = []
+    y_train_seq_list = []
+    source_stats = []
+
+    for source_name, df_source in training_sources:
+        if not set(features + ['label1']).issubset(df_source.columns):
+            continue
+
+        df_source = df_source.copy()
+        df_source[features] = df_source[features].replace(-9999, np.nan).ffill().bfill()
+        X_source = StandardScaler().fit_transform(df_source[features].values)
+        _, valid_seq_indices, y_train_seq = create_sequences(X_source, df_source['label1'], window_size)
+        X_seq_all_source, _, _ = create_sequences(X_source, pd.Series([np.nan] * len(df_source)), window_size)
+        X_train_seq = X_seq_all_source[valid_seq_indices]
+
+        if len(y_train_seq) == 0:
+            continue
+
+        X_train_seq_list.append(X_train_seq)
+        y_train_seq_list.append(y_train_seq)
+        source_stats.append((source_name, len(y_train_seq)))
+
+    X_train_seq_all = np.concatenate(X_train_seq_list, axis=0)
+    y_train_seq_all = np.concatenate(y_train_seq_list, axis=0)
+    return X_train_seq_all, y_train_seq_all, source_stats
+
+
 def create_sequences(X, labels, window_size):
     X_seq_all = []
     valid_seq_indices = []
@@ -170,7 +211,8 @@ X_all_scaled = scaler.fit_transform(X_all)
 # ==========================================
 print(">>> [2/5] 正在构建时序深度滑动窗口...")
 X_seq_all, valid_seq_indices, y_train_seq = create_sequences(X_all_scaled, df[label_col], WINDOW_SIZE)
-X_train_seq = X_seq_all[valid_seq_indices]
+X_train_seq_base = X_seq_all[valid_seq_indices]
+X_train_seq, y_train_seq, source_stats = load_reservoir_training_sequences(current_dir, features, WINDOW_SIZE)
 
 class_counts = np.bincount(y_train_seq)
 weights = len(y_train_seq) / (len(class_counts) * class_counts)
@@ -189,7 +231,9 @@ val_loader = build_loader(X_train_seq[val_idx], y_train_seq[val_idx], BATCH_SIZE
 # ==========================================
 # 3. 定义并训练网络
 # ==========================================
+source_msg = "，".join([f"{name}:{count}" for name, count in source_stats])
 print(f">>> [3/5] 正在基于 {len(y_train_seq)} 个已知标签段进行网络训练...")
+print(f">>> 训练样本组成：{source_msg}")
 model = FA_BiLSTM(
     input_size=len(features),
     hidden_size=HIDDEN_SIZE,

@@ -183,6 +183,27 @@ def evaluate_metrics(y_true, pred):
     }
 
 
+def load_ablation_labeled_data(current_dir, features):
+    sources = []
+
+    base_df = pd.read_excel(os.path.join(current_dir, '6-3训练数据_副本2.xlsx'))
+    sources.append(base_df)
+
+    extra_file = os.path.join(current_dir, '扩充数据.xlsx')
+    if os.path.exists(extra_file):
+        extra_df = pd.read_excel(extra_file, sheet_name='扩充数据2').copy()
+        if 'SGFC' in extra_df.columns and 'Sigma' not in extra_df.columns:
+            extra_df['Sigma'] = extra_df['SGFC']
+        sources.append(extra_df)
+
+    labeled_frames = []
+    for df_source in sources:
+        if set(features + ['label2']).issubset(df_source.columns):
+            labeled_frames.append(df_source.dropna(subset=['label2']).copy())
+
+    return pd.concat(labeled_frames, ignore_index=True)
+
+
 def train_model(model, train_loader, val_loader, X_test_env, y_test):
     optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     criterion = nn.CrossEntropyLoss()
@@ -243,12 +264,8 @@ def train_model(model, train_loader, val_loader, X_test_env, y_test):
 # ==========================================
 print(">>> [1/4] 加载真实标注井段并构建时序窗口...")
 current_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(current_dir, '6-3训练数据_副本2.xlsx')
-
-df = pd.read_excel(file_path)
-df_labeled = df.dropna(subset=['label2']).copy().reset_index(drop=True)
-
 features = ['MLR', 'AMPST', 'GR', 'RICX', 'RIN13', 'RATO13', 'Sigma']
+df_labeled = load_ablation_labeled_data(current_dir, features).reset_index(drop=True)
 X_real = df_labeled[features].values
 y_real = np.where(df_labeled['label2'].values == 2, 0, 1)
 
