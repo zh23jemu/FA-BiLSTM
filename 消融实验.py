@@ -301,7 +301,7 @@ train_loader = build_loader(X_train_aug, y_train_aug, batch_size=BATCH_SIZE, shu
 val_loader = build_loader(X_val_scaled, y_val, batch_size=BATCH_SIZE, shuffle=False)
 
 metrics_results['BiLSTM'] = train_model(
-    BiLSTM(len(features), HIDDEN_SIZE, 2, dropout=DROPOUT),
+    BiLSTM(len(features), HIDDEN_SIZE, 2, dropout=0.35),
     train_loader,
     val_loader,
     X_test_env,
