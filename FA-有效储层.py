@@ -100,28 +100,28 @@ def build_loader(X, y, batch_size, shuffle):
 
 
 class FeatureAttentionLayer(nn.Module):
-    def __init__(self, hidden_size, attention_dim=32):
+    def __init__(self, hidden_size, attention_dim=32, temperature=1.6):
         super().__init__()
         self.W_h = nn.Linear(hidden_size * 2, attention_dim, bias=False)
         self.W_x = nn.Linear(1, attention_dim, bias=False)
         self.v = nn.Linear(attention_dim, 1, bias=True)
+        self.temperature = temperature
 
     def forward(self, h_context, x_current):
         h_proj = self.W_h(h_context).unsqueeze(1)
         x_proj = self.W_x(x_current.unsqueeze(-1))
         energy = torch.tanh(h_proj + x_proj)
         score = self.v(energy).squeeze(-1)
-        alpha = torch.sigmoid(score)
-        alpha = alpha / (alpha.sum(dim=1, keepdim=True) + 1e-8)
+        alpha = F.softmax(score / self.temperature, dim=1)
         weighted_x = alpha * x_current
         return alpha, weighted_x
 
 
 class FA_BiLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes, attention_dim=32, dropout=0.2):
+    def __init__(self, input_size, hidden_size, num_classes, attention_dim=32, dropout=0.2, temperature=1.6):
         super().__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers=1, batch_first=True, bidirectional=True)
-        self.fa = FeatureAttentionLayer(hidden_size, attention_dim)
+        self.fa = FeatureAttentionLayer(hidden_size, attention_dim, temperature=temperature)
         self.dropout = nn.Dropout(dropout)
         fusion_size = hidden_size * 2 + input_size * 2
         self.classifier = nn.Sequential(

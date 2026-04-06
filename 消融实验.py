@@ -134,28 +134,28 @@ class BiLSTM(nn.Module):
 
 
 class FeatureAttentionLayer(nn.Module):
-    def __init__(self, hidden_size, attention_dim=32):
+    def __init__(self, hidden_size, attention_dim=32, temperature=1.6):
         super().__init__()
         self.W_h = nn.Linear(hidden_size * 2, attention_dim, bias=False)
         self.W_x = nn.Linear(1, attention_dim, bias=False)
         self.v = nn.Linear(attention_dim, 1, bias=True)
+        self.temperature = temperature
 
     def forward(self, h_context, x_current):
         h_proj = self.W_h(h_context).unsqueeze(1)
         x_proj = self.W_x(x_current.unsqueeze(-1))
         energy = torch.tanh(h_proj + x_proj)
         score = self.v(energy).squeeze(-1)
-        alpha = torch.sigmoid(score)
-        alpha = alpha / (alpha.sum(dim=1, keepdim=True) + 1e-8)
+        alpha = F.softmax(score / self.temperature, dim=1)
         weighted_x = alpha * x_current
         return alpha, weighted_x
 
 
 class FA_BiLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes, dropout=0.2):
+    def __init__(self, input_size, hidden_size, num_classes, dropout=0.2, attention_dim=32, temperature=1.6):
         super().__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers=1, batch_first=True, bidirectional=True)
-        self.fa = FeatureAttentionLayer(hidden_size, attention_dim=32)
+        self.fa = FeatureAttentionLayer(hidden_size, attention_dim=attention_dim, temperature=temperature)
         self.dropout = nn.Dropout(dropout)
         fusion_size = hidden_size * 2 + input_size * 2
         self.classifier = nn.Sequential(
@@ -204,14 +204,15 @@ def load_ablation_labeled_data(current_dir, features):
     return pd.concat(labeled_frames, ignore_index=True)
 
 
-def train_model(model, train_loader, val_loader, X_test_env, y_test):
-    optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+def train_model(model, train_loader, val_loader, X_test_env, y_test, lr=LR, weight_decay=WEIGHT_DECAY,
+                epochs=EPOCHS, patience=PATIENCE):
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss()
     best_state = None
     best_val_loss = float('inf')
     wait = 0
 
-    for _ in range(EPOCHS):
+    for _ in range(epochs):
         model.train()
         for batch_x, batch_y in train_loader:
             optimizer.zero_grad()
@@ -242,7 +243,7 @@ def train_model(model, train_loader, val_loader, X_test_env, y_test):
             wait = 0
         else:
             wait += 1
-            if wait >= PATIENCE:
+            if wait >= patience:
                 break
 
     if best_state is not None:
@@ -309,11 +310,15 @@ metrics_results['BiLSTM'] = train_model(
 )
 
 metrics_results['FA-BiLSTM'] = train_model(
-    FA_BiLSTM(len(features), HIDDEN_SIZE, 2, dropout=DROPOUT),
+    FA_BiLSTM(len(features), HIDDEN_SIZE, 2, dropout=0.05, attention_dim=48, temperature=1.6),
     train_loader,
     val_loader,
     X_test_env,
-    y_test
+    y_test,
+    lr=0.0015,
+    weight_decay=5e-5,
+    epochs=220,
+    patience=35
 )
 
 print("\n" + "=" * 72)
