@@ -52,32 +52,86 @@ def arrow(slide, x1, y1, x2, y2, color=(100,100,100), width=1.5, arrowhead=True)
         line.line.end_arrowhead = True
     return line
 
-def draw_lstm_chain(slide, x_start, y_start, num_cells=4):
-    colors = {"fw": (145, 199, 138), "bw": (122, 170, 214)}
-    xs = [x_start + i*2.2 for i in range(num_cells)]
+def draw_lstm_chain(slide):
+    # Modified to match the user's specific BiLSTM diagram structure
+    xs = [11.8, 16.5, 21.2] # Center points for t-1, t, t+1
+    y_in = 8.4
+    y_fw = 7.4
+    y_bw = 6.4
+    y_out = 5.4
+    y_out_label = 4.8
+    
+    colors = {"fw": (145, 199, 138), "bw": (224, 152, 160), "in": (255, 235, 205), "out": (255, 192, 203)}
+    
+    bw_h = 0.7
+    bw_w = 1.8
+    r_in = 0.5
+    r_out = 0.4
+    
+    # Draw arrows FIRST so they are visually behind the boxes
     for x in xs:
-        # Fw node
-        c1 = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.OVAL, Cm(x), Cm(y_start), Cm(0.8), Cm(0.8))
-        c1.fill.solid(); c1.fill.fore_color.rgb = RGBColor(*colors["fw"])
-        c1.line.color.rgb = RGBColor(255,255,255)
-        # Bw node
-        c2 = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.OVAL, Cm(x), Cm(y_start+1.5), Cm(0.8), Cm(0.8))
-        c2.fill.solid(); c2.fill.fore_color.rgb = RGBColor(*colors["bw"])
-        c2.line.color.rgb = RGBColor(255,255,255)
-        # Input arrows
-        arrow(slide, x+0.4, y_start+3, x+0.4, y_start+2.3)
-        arrow(slide, x+0.4, y_start+2.3, x+0.4, y_start+0.8)
-    # Horizontal arrows
-    for i in range(num_cells-1):
-        arrow(slide, xs[i]+0.8, y_start+0.4, xs[i+1], y_start+0.4, color=colors["fw"])
-        arrow(slide, xs[i+1], y_start+1.9, xs[i]+0.8, y_start+1.9, color=colors["bw"])
+        # x to fw
+        arrow(slide, x, y_in-r_in, x, y_fw+bw_h/2)
+        # x to bw (bypass fw on the right)
+        l1 = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Cm(x+0.3), Cm(y_in-r_in+0.1), Cm(x+0.9), Cm(y_fw))
+        l1.line.color.rgb = RGBColor(100,100,100); l1.line.width = Pt(1.5)
+        arrow(slide, x+0.9, y_fw, x+0.3, y_bw+bw_h/2)
+        # fw to out (bypass bw on the left)
+        l2 = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Cm(x-0.3), Cm(y_fw-bw_h/2), Cm(x-0.9), Cm(y_bw))
+        l2.line.color.rgb = RGBColor(100,100,100); l2.line.width = Pt(1.5)
+        arrow(slide, x-0.9, y_bw, x-0.3, y_out+r_out)
+        # bw to out
+        arrow(slide, x, y_bw-bw_h/2, x, y_out+r_out)
+        # out to y
+        arrow(slide, x, y_out-r_out, x, y_out_label+0.4)
+        
+    # Horizontal arrows for FW (Left to Right)
+    for i in range(2):
+        arrow(slide, xs[i]+bw_w/2, y_fw, xs[i+1]-bw_w/2, y_fw, color=colors["fw"], width=2.0)
+    # Horizontal arrows for BW (Right to Left)
+    for i in range(2, 0, -1):
+        arrow(slide, xs[i]-bw_w/2, y_bw, xs[i-1]+bw_w/2, y_bw, color=colors["bw"], width=2.0)
+
+    # Input/Output text labels on left
+    textbox(slide, 9.6, y_in-0.4, 1.8, 0.8, "输入层", size=10, bold=True)
+    textbox(slide, 9.6, y_bw+0.1, 1.8, 0.8, "双向层\n(BiLSTM)", size=10, bold=True)
+    textbox(slide, 9.6, y_out-0.4, 1.8, 0.8, "输出层", size=10, bold=True)
     
-    textbox(slide, x_start-0.5, y_start+3, num_cells*2.2, 0.5, "输入序列 Xt = [x_((t-L)), ..., x_t]", size=11, align=PP_ALIGN.CENTER)
-    
-    # Output h_target
-    arrow(slide, xs[-1]+0.8, y_start+0.4, xs[-1]+2.2, y_start+1.1)
-    arrow(slide, xs[-1]+0.8, y_start+1.9, xs[-1]+2.2, y_start+1.1)
-    rounded_box(slide, xs[-1]+2.2, y_start+0.6, 2.5, 1, (240, 240, 250), title="h_target\n(上下文特征)", title_size=10)
+    # Draw Nodes
+    labels = ["t-1", "t", "t+1"]
+    for i, x in enumerate(xs):
+        # Input circles
+        c_in = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.OVAL, Cm(x-r_in), Cm(y_in-r_in), Cm(r_in*2), Cm(r_in*2))
+        c_in.fill.solid(); c_in.fill.fore_color.rgb = RGBColor(*colors["in"])
+        c_in.line.color.rgb = RGBColor(100,100,100)
+        # Use wider textbox to avoid wrap
+        textbox(slide, x-1.0, y_in-r_in, 2.0, r_in*2, f"x_{labels[i]}", size=10, bold=True)
+        
+        # Forward LSTM box
+        fw_box = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Cm(x-bw_w/2), Cm(y_fw-bw_h/2), Cm(bw_w), Cm(bw_h))
+        fw_box.fill.solid(); fw_box.fill.fore_color.rgb = RGBColor(220, 235, 255)
+        fw_box.line.color.rgb = RGBColor(100,100,100)
+        textbox(slide, x-bw_w/2, y_fw-bw_h/2, bw_w, bw_h, "LSTM", size=10, bold=True)
+        
+        # Backward LSTM box
+        bw_box = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Cm(x-bw_w/2), Cm(y_bw-bw_h/2), Cm(bw_w), Cm(bw_h))
+        bw_box.fill.solid(); bw_box.fill.fore_color.rgb = RGBColor(220, 235, 255)
+        bw_box.line.color.rgb = RGBColor(100,100,100)
+        textbox(slide, x-bw_w/2, y_bw-bw_h/2, bw_w, bw_h, "LSTM", size=10, bold=True)
+        
+        # Output + circle
+        c_out = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.OVAL, Cm(x-r_out), Cm(y_out-r_out), Cm(r_out*2), Cm(r_out*2))
+        c_out.fill.solid(); c_out.fill.fore_color.rgb = RGBColor(*colors["out"])
+        c_out.line.color.rgb = RGBColor(100,100,100)
+        textbox(slide, x-r_out, y_out-r_out, r_out*2, r_out*2, "+", size=14, bold=True)
+        
+        # Y labels (use wide textbox to avoid wrap)
+        textbox(slide, x-1.0, y_out_label, 2.0, 0.6, f"y_{labels[i]}", size=10, bold=True)
+
+    # Link to h_target
+    arrow(slide, xs[-1]+bw_w/2+0.1, y_out, xs[-1]+bw_w/2+0.5, y_out)
+    # Use wider box so h_target doesn't wrap awkwardly
+    rounded_box(slide, xs[-1]+bw_w/2+0.5, y_out-0.4, 2.2, 0.8, (240, 240, 250), title="h_target\n(上下文)", title_size=9)
 
 def main():
     prs = Presentation()
@@ -128,10 +182,10 @@ def main():
     # 2. Middle Panel
     # ------------------
     # Top: BiLSTM
-    rounded_box(slide, 9.5, 4, 14.5, 5.5, (255, 255, 255), c_line)
-    textbox(slide, 9.5, 4, 14.5, 1, "时序特征提取 (BiLSTM Layer)", size=14, bold=True, color=c_navy)
-    draw_lstm_chain(slide, 10.5, 5.2, num_cells=4)
-    textbox(slide, 9.5, 8.6, 14.5, 0.8, "说明：双向LSTM分别捕捉“由浅至深”和“由深至浅”的地质趋势", size=11, color=(100,100,100))
+    rounded_box(slide, 9.5, 4, 14.5, 5.8, (255, 255, 255), c_line)
+    textbox(slide, 9.5, 4.0, 14.5, 0.8, "时序特征提取 (BiLSTM Layer)", size=14, bold=True, color=c_navy)
+    draw_lstm_chain(slide)
+    textbox(slide, 9.5, 9.0, 14.5, 0.8, "说明：双向LSTM分别捕捉“由浅至深”和“由深至浅”的地质趋势", size=11, color=(100,100,100))
 
     # Bottom: Attention
     rounded_box(slide, 9.5, 10, 14.5, 7.5, (255, 255, 255), c_line)
@@ -151,7 +205,7 @@ def main():
     
     arrow(slide, 16.1, 14.3, 17, 14.3)
     
-    rounded_box(slide, 17, 13.5, 2.5, 1.6, (228, 239, 224), title="Sigmoid激活\n分配权重(α)", title_size=11)
+    rounded_box(slide, 17, 13.5, 2.5, 1.6, (228, 239, 224), title="Softmax激活\n分配权重(α)", title_size=11)
     
     arrow(slide, 19.5, 14.3, 20.8, 14.3)
     
@@ -163,6 +217,25 @@ def main():
     rounded_box(slide, 20.8, 13.5, 2.5, 1.6, (255, 245, 230), title="特征贡献度加权\nα ⊙ x_target", title_size=11)
     
     textbox(slide, 10, 11.0, 13.5, 1, "逻辑：上下文 h_target 决定当前环境下，各个物理参数 x_target 的贡献大小", size=11, color=(100,100,100), align=PP_ALIGN.LEFT)
+
+    # 上下文传递连线 (从 BiLSTM h_target 传递到 Attention h_target)
+    # top h_target ( center x=23.7, y=5.4 ), bottom h_target ( center x=11.4, y=12.6 )
+    conn1_1 = arrow(slide, 23.7, 5.8, 23.7, 9.8, color=(210, 150, 150), width=1.2, arrowhead=False)
+    conn1_1.line.dash_style = 4
+    conn1_2 = arrow(slide, 23.7, 9.8, 11.4, 9.8, color=(210, 150, 150), width=1.2, arrowhead=False)
+    conn1_2.line.dash_style = 4
+    conn1_3 = arrow(slide, 11.4, 9.8, 11.4, 12.0, color=(210, 150, 150), width=1.2, arrowhead=True)
+    conn1_3.line.dash_style = 4
+    textbox(slide, 21.0, 9.8, 2.5, 0.6, "上下文状态传递", size=10, bold=True, color=(180, 100, 100))
+
+    # 共享特征连线 (从 BiLSTM输入 x_t 传递到 Attention x_target)
+    # x_t center ~ x=16.5, y=8.4. Drop down to y=15.5 then go left to x=12.8
+    # Bottom x_target right edge is at x=12.8, Box y is 15.5~16.7 center is 16.1
+    conn2_1 = arrow(slide, 16.5, 8.9, 16.5, 16.1, color=(150, 180, 150), width=1.2, arrowhead=False)
+    conn2_1.line.dash_style = 4
+    conn2_2 = arrow(slide, 16.5, 16.1, 12.8, 16.1, color=(150, 180, 150), width=1.2, arrowhead=True)
+    conn2_2.line.dash_style = 4
+    textbox(slide, 15.3, 15.6, 2.5, 0.6, "当前时刻物理特征", size=10, bold=True, color=(100, 160, 100))
 
 
     # ------------------
